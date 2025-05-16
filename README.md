@@ -92,3 +92,83 @@ Our codebase is built using multiple opensource contributions, please see [ACKNO
 ## License
 Please check out the repository [LICENSE](LICENSE) before using the provided code and
 [LICENSE_MODEL](LICENSE_MODEL) for the released models.
+
+# 实时图像描述系统
+
+这是一个基于 FastVLM 模型的实时图像描述系统，可以自动捕获摄像头画面并使用 AI 模型进行描述。
+
+## 功能特点
+
+- 实时捕获摄像头画面
+- 使用 FastVLM 模型进行图像描述
+- WebSocket 实时通信
+- 自动重连机制
+- 美观的用户界面
+- 支持多客户端连接
+
+## 系统要求
+
+- Python 3.8+
+- OpenCV
+- FastAPI
+- uvicorn
+- FastVLM 模型
+
+## 安装步骤
+
+1. 克隆仓库：
+```bash
+git clone <repository-url>
+cd <repository-name>
+```
+
+2. 安装依赖：
+```bash
+pip install fastapi uvicorn opencv-python
+```
+
+3. 下载 FastVLM 模型：
+将模型文件放在 `/Users/user/workspace/models/llava-fastvithd_0.5b_stage3` 目录下。
+
+## 使用方法
+
+1. 启动服务器：
+```bash
+python server.py
+```
+
+2. 打开浏览器访问：
+```
+http://localhost:5000
+```
+
+## 配置说明
+
+- 摄像头参数可以在 `server.py` 中的 `get_camera()` 函数中调整
+- 图像捕获间隔可以在 `capture_and_describe()` 函数中修改
+- 模型路径和提示词可以在 `server.py` 顶部修改
+
+## 注意事项
+
+- 确保摄像头可用且未被其他程序占用
+- 首次运行时模型加载可能需要一些时间
+- 临时图片文件会自动删除
+- 最多显示最近 10 条描述记录
+
+## 故障排除
+
+1. 如果无法连接摄像头：
+   - 检查摄像头是否被其他程序占用
+   - 确认摄像头权限设置
+
+2. 如果模型加载失败：
+   - 确认模型文件路径是否正确
+   - 检查模型文件是否完整
+
+3. 如果 WebSocket 连接断开：
+   - 系统会自动尝试重连
+   - 检查网络连接是否稳定
+
+## 许可证
+
+MIT License
