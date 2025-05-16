@@ -13,8 +13,60 @@ import threading
 import queue
 import time
 import numpy as np
+from fastapi.middleware.cors import CORSMiddleware
+import logging
+from logging.handlers import RotatingFileHandler
+import sys
+import torch
+from transformers import AutoProcessor, AutoModelForVision2Seq
+import base64
+from io import BytesIO
+from PIL import Image
 
 app = FastAPI()
+
+# 配置CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 日志配置
+LOG_DIR = os.path.expanduser("~/ml-fastvlm-logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+LOG_FILE = os.path.join(LOG_DIR, "server.log")
+
+# 配置日志
+logger = logging.getLogger("ml-fastvlm-server")
+logger.setLevel(logging.INFO)
+
+# 文件处理器（按大小轮转）
+file_handler = RotatingFileHandler(
+    LOG_FILE,
+    maxBytes=10*1024*1024,  # 10MB
+    backupCount=5,
+    encoding='utf-8'
+)
+file_handler.setLevel(logging.INFO)
+
+# 控制台处理器
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+
+# 设置日志格式
+formatter = logging.Formatter(
+    '[%(asctime)s] %(levelname)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+file_handler.setFormatter(formatter)
+console_handler.setFormatter(formatter)
+
+# 添加处理器
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
 
 # FastVLM 模型路径
 MODEL_PATH = "/Users/user/workspace/models/llava-fastvithd_0.5b_stage3"
@@ -24,6 +76,8 @@ PROMPT = "用简短的语言描述图片内容"
 description_queue = queue.Queue()
 is_model_loading = True
 active_connections: List[WebSocket] = []
+model = None
+processor = None
 
 # 创建图片保存目录
 IMAGE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "captured_images")
@@ -132,14 +186,24 @@ async def websocket_endpoint(websocket: WebSocket):
     """WebSocket 连接处理"""
     await websocket.accept()
     active_connections.append(websocket)
+    logger.info("🔌 新的WebSocket连接已建立")
+    
     try:
         while True:
             # 接收图片数据
             image_data = await websocket.receive_bytes()
+            logger.info("📥 收到图片数据")
+            
             # 处理图片
             await process_image(websocket, image_data)
+            
     except WebSocketDisconnect:
         active_connections.remove(websocket)
+        logger.info("🔌 WebSocket连接已断开")
+    except Exception as e:
+        logger.error(f"❌ 处理过程出错: {e}")
+        if websocket in active_connections:
+            active_connections.remove(websocket)
 
 # 挂载静态文件
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -150,6 +214,24 @@ async def get():
     with open("templates/index.html") as f:
         return f.read()
 
+def load_model():
+    """加载模型"""
+    global model, processor
+    try:
+        logger.info("🔄 正在加载模型...")
+        model = AutoModelForVision2Seq.from_pretrained("microsoft/git-base-coco")
+        processor = AutoProcessor.from_pretrained("microsoft/git-base-coco")
+        logger.info("✅ 模型加载完成")
+    except Exception as e:
+        logger.error(f"❌ 模型加载失败: {e}")
+        raise
+
+@app.on_event("startup")
+async def startup_event():
+    """服务启动时加载模型"""
+    load_model()
+
 if __name__ == "__main__":
-    print_progress("🚀 启动服务器...")
+    logger.info("🚀 启动服务器...")
+    logger.info(f"📁 日志文件位置: {LOG_FILE}")
     uvicorn.run(app, host="0.0.0.0", port=5000) 

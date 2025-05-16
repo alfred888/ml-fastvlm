@@ -95,79 +95,105 @@ Please check out the repository [LICENSE](LICENSE) before using the provided cod
 
 # 实时图像描述系统
 
-这是一个基于 FastVLM 模型的实时图像描述系统，可以自动捕获摄像头画面并使用 AI 模型进行描述。
+这是一个基于 FastVLM 的实时图像描述系统，支持实时图像捕获和描述。
 
-## 功能特点
+## 系统架构
 
-- 实时捕获摄像头画面
-- 使用 FastVLM 模型进行图像描述
-- WebSocket 实时通信
-- 自动重连机制
-- 美观的用户界面
-- 支持多客户端连接
+系统分为两个主要部分：
 
-## 系统要求
+1. 客户端（树莓派）
+   - 负责图像捕获
+   - 提供 Web 界面
+   - 通过 WebSocket 与服务器通信
 
-- Python 3.8+
-- OpenCV
-- FastAPI
-- uvicorn
-- FastVLM 模型
+2. 服务端（Ubuntu 服务器）
+   - 运行 FastVLM 模型
+   - 处理图像描述请求
+   - 通过 WebSocket 返回结果
 
-## 安装步骤
+## 日志系统
 
-1. 克隆仓库：
+系统使用 Python 的 logging 模块进行日志记录，日志文件保存在用户目录下的 `ml-fastvlm-logs` 文件夹中：
+
+- 客户端日志：`~/ml-fastvlm-logs/client.log`
+- 服务端日志：`~/ml-fastvlm-logs/server.log`
+
+日志特点：
+- 自动按大小轮转（每个文件最大 10MB）
+- 保留最近 5 个日志文件
+- 同时输出到控制台和文件
+- 包含时间戳和日志级别
+- 使用表情符号提高可读性
+
+日志级别：
+- INFO：正常运行信息
+- ERROR：错误和异常信息
+
+## 部署说明
+
+### 服务端（Ubuntu）
+
+1. 安装依赖：
 ```bash
-git clone <repository-url>
-cd <repository-name>
+pip install -r requirements.txt
 ```
 
-2. 安装依赖：
-```bash
-pip install fastapi uvicorn opencv-python
-```
-
-3. 下载 FastVLM 模型：
-将模型文件放在 `/Users/user/workspace/models/llava-fastvithd_0.5b_stage3` 目录下。
-
-## 使用方法
-
-1. 启动服务器：
+2. 启动服务：
 ```bash
 python server.py
 ```
 
-2. 打开浏览器访问：
+服务将在 `http://服务器IP:5000` 上运行。
+
+### 客户端（树莓派）
+
+1. 安装依赖：
+```bash
+pip install -r client/requirements.txt
 ```
-http://localhost:5000
+
+2. 启动客户端：
+```bash
+python client/app.py
 ```
+
+客户端将在 `http://树莓派IP:8080` 上运行。
+
+## 监控和故障排除
+
+1. 查看日志：
+```bash
+# 查看客户端日志
+tail -f ~/ml-fastvlm-logs/client.log
+
+# 查看服务端日志
+tail -f ~/ml-fastvlm-logs/server.log
+```
+
+2. 常见问题：
+   - 如果连接失败，检查日志中的错误信息
+   - 如果模型加载失败，检查 CUDA 和模型文件
+   - 如果图片处理失败，检查图片格式和大小
+
+3. 性能监控：
+   - 日志中记录了图片大小和处理时间
+   - 可以监控 WebSocket 连接状态
+   - 可以查看模型加载和运行状态
 
 ## 配置说明
 
-- 摄像头参数可以在 `server.py` 中的 `get_camera()` 函数中调整
-- 图像捕获间隔可以在 `capture_and_describe()` 函数中修改
-- 模型路径和提示词可以在 `server.py` 顶部修改
+### 客户端配置
 
-## 注意事项
+在 `client/app.py` 中：
+- `IMAGE_WIDTH`：压缩后的图片宽度
+- `IMAGE_QUALITY`：JPEG 压缩质量（0-100）
 
-- 确保摄像头可用且未被其他程序占用
-- 首次运行时模型加载可能需要一些时间
-- 临时图片文件会自动删除
-- 最多显示最近 10 条描述记录
+### 服务端配置
 
-## 故障排除
-
-1. 如果无法连接摄像头：
-   - 检查摄像头是否被其他程序占用
-   - 确认摄像头权限设置
-
-2. 如果模型加载失败：
-   - 确认模型文件路径是否正确
-   - 检查模型文件是否完整
-
-3. 如果 WebSocket 连接断开：
-   - 系统会自动尝试重连
-   - 检查网络连接是否稳定
+在 `server.py` 中：
+- 模型参数配置
+- WebSocket 连接设置
+- 日志配置
 
 ## 许可证
 

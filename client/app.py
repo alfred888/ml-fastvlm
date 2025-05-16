@@ -10,6 +10,9 @@ import os
 from datetime import datetime
 import threading
 import queue
+import logging
+from logging.handlers import RotatingFileHandler
+import sys
 
 app = FastAPI()
 
@@ -17,6 +20,40 @@ app = FastAPI()
 IMAGE_WIDTH = 640  # 压缩后的图片宽度
 IMAGE_QUALITY = 85  # JPEG压缩质量（0-100）
 JPEG_EXTENSION = '.jpg'
+
+# 日志配置
+LOG_DIR = os.path.expanduser("~/ml-fastvlm-logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+LOG_FILE = os.path.join(LOG_DIR, "client.log")
+
+# 配置日志
+logger = logging.getLogger("ml-fastvlm-client")
+logger.setLevel(logging.INFO)
+
+# 文件处理器（按大小轮转）
+file_handler = RotatingFileHandler(
+    LOG_FILE,
+    maxBytes=10*1024*1024,  # 10MB
+    backupCount=5,
+    encoding='utf-8'
+)
+file_handler.setLevel(logging.INFO)
+
+# 控制台处理器
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+
+# 设置日志格式
+formatter = logging.Formatter(
+    '[%(asctime)s] %(levelname)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+file_handler.setFormatter(formatter)
+console_handler.setFormatter(formatter)
+
+# 添加处理器
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
 
 # 全局变量
 camera = None
@@ -29,8 +66,7 @@ os.makedirs(IMAGE_DIR, exist_ok=True)
 
 def print_progress(message):
     """打印带时间戳的进度信息"""
-    timestamp = datetime.now().strftime("%H:%M:%S")
-    print(f"[{timestamp}] {message}")
+    logger.info(message)
 
 def get_camera():
     """获取摄像头对象"""
@@ -42,6 +78,7 @@ def get_camera():
         camera.set(cv2.CAP_PROP_EXPOSURE, -4)
         camera.set(cv2.CAP_PROP_GAIN, 100)
         camera.set(cv2.CAP_PROP_BRIGHTNESS, 150)
+        logger.info("📹 摄像头初始化完成")
     return camera
 
 def compress_image(frame):
@@ -64,7 +101,7 @@ def save_image(frame, filepath):
     
     # 获取压缩后的文件大小
     file_size = os.path.getsize(filepath) / 1024  # 转换为KB
-    print_progress(f"📊 图片大小: {file_size:.1f}KB")
+    logger.info(f"📊 图片大小: {file_size:.1f}KB")
     
     return compressed
 
@@ -76,7 +113,7 @@ async def capture_and_send(websocket):
                 camera = get_camera()
                 ret, frame = camera.read()
                 if not ret:
-                    print_progress("❌ 无法读取摄像头画面")
+                    logger.error("❌ 无法读取摄像头画面")
                     await asyncio.sleep(1)
                     continue
 
@@ -86,7 +123,7 @@ async def capture_and_send(websocket):
                 
                 # 保存压缩后的图片
                 compressed_frame = save_image(frame, filepath)
-                print_progress(f"📸 图片已保存到: {filepath}")
+                logger.info(f"📸 图片已保存到: {filepath}")
                 
                 # 读取压缩后的图片数据
                 with open(filepath, 'rb') as f:
@@ -94,16 +131,17 @@ async def capture_and_send(websocket):
                 
                 # 发送图片数据到服务器
                 await websocket.send_bytes(image_data)
+                logger.info("📤 图片数据已发送到服务器")
                 
                 # 删除临时文件
                 try:
                     os.remove(filepath)
-                    print_progress(f"🗑️ 临时文件已删除: {filepath}")
+                    logger.info(f"🗑️ 临时文件已删除: {filepath}")
                 except Exception as e:
-                    print_progress(f"⚠️ 删除临时文件失败: {e}")
+                    logger.error(f"⚠️ 删除临时文件失败: {e}")
                 
             except Exception as e:
-                print_progress(f"❌ 处理过程出错: {e}")
+                logger.error(f"❌ 处理过程出错: {e}")
         
         await asyncio.sleep(5)  # 每5秒拍摄一次
 
@@ -112,6 +150,7 @@ async def websocket_endpoint(websocket: WebSocket):
     """WebSocket 连接处理"""
     await websocket.accept()
     active_connections.append(websocket)
+    logger.info("🔌 新的WebSocket连接已建立")
     try:
         # 启动图片捕获和发送任务
         capture_task = asyncio.create_task(capture_and_send(websocket))
@@ -122,6 +161,7 @@ async def websocket_endpoint(websocket: WebSocket):
             try:
                 result = json.loads(data)
                 if result.get("type") == "description":
+                    logger.info("📥 收到服务器描述结果")
                     # 广播描述结果给所有连接的客户端
                     for connection in active_connections:
                         try:
@@ -129,10 +169,11 @@ async def websocket_endpoint(websocket: WebSocket):
                         except:
                             continue
             except json.JSONDecodeError:
-                print_progress("❌ 收到无效的JSON数据")
+                logger.error("❌ 收到无效的JSON数据")
                 
     except WebSocketDisconnect:
         active_connections.remove(websocket)
+        logger.info("🔌 WebSocket连接已断开")
         if 'capture_task' in locals():
             capture_task.cancel()
 
@@ -146,5 +187,6 @@ async def get():
         return f.read()
 
 if __name__ == "__main__":
-    print_progress("🚀 启动树莓派客户端...")
+    logger.info("🚀 启动树莓派客户端...")
+    logger.info(f"📁 日志文件位置: {LOG_FILE}")
     uvicorn.run(app, host="0.0.0.0", port=8080) 
