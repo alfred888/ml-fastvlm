@@ -15,9 +15,19 @@ if ! command -v nvcc &> /dev/null; then
     echo "警告: 未检测到 CUDA 工具包 (nvcc)，但不会影响容器运行"
 fi
 
-# 检查 nvidia-docker
-if ! command -v nvidia-docker &> /dev/null; then
-    echo "错误: 未检测到 nvidia-docker，请先安装 nvidia-docker"
+# 检查 Docker 是否运行
+if ! docker info &> /dev/null; then
+    echo "错误: Docker 未运行，请先启动 Docker 服务"
+    exit 1
+fi
+
+# 检查 Docker 版本
+DOCKER_VERSION=$(docker --version)
+echo "Docker 版本: $DOCKER_VERSION"
+
+# 检查 NVIDIA Container Toolkit
+if ! docker info | grep -i "nvidia" &> /dev/null; then
+    echo "错误: 未检测到 NVIDIA Container Toolkit，请安装 nvidia-container-toolkit"
     echo "安装命令:"
     echo "# 添加 NVIDIA 包仓库"
     echo "curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg"
@@ -26,8 +36,11 @@ if ! command -v nvidia-docker &> /dev/null; then
     echo "# 更新包列表"
     echo "sudo apt-get update"
     echo ""
-    echo "# 安装 nvidia-docker2 包"
-    echo "sudo apt-get install -y nvidia-docker2"
+    echo "# 安装 nvidia-container-toolkit"
+    echo "sudo apt-get install -y nvidia-container-toolkit"
+    echo ""
+    echo "# 配置 Docker 运行时"
+    echo "sudo nvidia-ctk runtime configure --runtime=docker"
     echo ""
     echo "# 重启 Docker 守护进程"
     echo "sudo systemctl restart docker"
@@ -41,34 +54,6 @@ nvidia-smi --query-gpu=name,memory.total,memory.free,memory.used --format=csv,no
 # 检查 GPU 数量
 GPU_COUNT=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
 echo "检测到 $GPU_COUNT 个 GPU 设备"
-
-# 检查 Docker 是否运行
-if ! docker info &> /dev/null; then
-    echo "错误: Docker 未运行，请先启动 Docker 服务"
-    exit 1
-fi
-
-# 检查 Docker 版本
-DOCKER_VERSION=$(docker --version)
-echo "Docker 版本: $DOCKER_VERSION"
-
-# 检查 nvidia-container-toolkit
-if ! docker info | grep -i "nvidia" &> /dev/null; then
-    echo "警告: 未检测到 nvidia-container-toolkit，请确保已安装"
-    echo "安装命令:"
-    echo "# 添加 NVIDIA 包仓库"
-    echo "curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg"
-    echo "curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list"
-    echo ""
-    echo "# 更新包列表"
-    echo "sudo apt-get update"
-    echo ""
-    echo "# 安装 nvidia-container-toolkit"
-    echo "sudo apt-get install -y nvidia-container-toolkit"
-    echo ""
-    echo "# 重启 Docker 守护进程"
-    echo "sudo systemctl restart docker"
-fi
 
 # 检查模型目录
 if [ ! -d "$HOME/models" ]; then
