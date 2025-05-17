@@ -6,8 +6,8 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - ./checkpoints:/app/checkpoints
-      - ./logs:/app/logs
+      - ~/models:/app/checkpoints
+      - ~/logs:/app/logs
     environment:
       - CUDA_VISIBLE_DEVICES=0
     deploy:
@@ -17,15 +17,4 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    restart: unless-stopped
-
-  client:
-    build:
-      context: .
-      dockerfile: Dockerfile.client
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./captured_images:/app/captured_images
-    depends_on:
-      - fastvlm 
+    restart: unless-stopped 

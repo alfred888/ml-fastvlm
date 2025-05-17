@@ -39,7 +39,7 @@ app.add_middleware(
 )
 
 # 日志配置
-LOG_DIR = os.path.expanduser("~/ml-fastvlm-logs")
+LOG_DIR = os.path.expanduser("~/logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 LOG_FILE = os.path.join(LOG_DIR, "server.log")
 
@@ -55,7 +55,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # FastVLM 模型路径
-MODEL_PATH = "/Users/user/workspace/models/llava-fastvithd_0.5b_stage3"
+MODEL_PATH = os.path.expanduser("~/models/llava-fastvithd_0.5b_stage3")
 PROMPT = "用简短的语言描述图片内容"
 
 # 全局变量
