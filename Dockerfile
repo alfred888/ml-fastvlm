@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu24.04
 
 # 设置工作目录
 WORKDIR /app
@@ -10,6 +10,8 @@ RUN apt-get update && \
     python3-pip \
     git \
     wget \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装Miniconda
@@ -29,6 +31,8 @@ COPY . .
 
 # 设置环境变量
 ENV PYTHONPATH=/app
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
 # 暴露端口
 EXPOSE 5000
