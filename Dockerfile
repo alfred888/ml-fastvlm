@@ -4,10 +4,12 @@ FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
 WORKDIR /app
 
 # 安装系统依赖
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && \
+    apt-get install -y \
     python3.10 \
     python3-pip \
     git \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装Miniconda
