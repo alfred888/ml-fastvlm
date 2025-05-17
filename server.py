@@ -22,6 +22,10 @@ from transformers import AutoProcessor, AutoModelForVision2Seq
 import base64
 from io import BytesIO
 from PIL import Image
+import io
+from predict import predict
+import argparse
+import websockets
 
 app = FastAPI()
 
@@ -40,33 +44,15 @@ os.makedirs(LOG_DIR, exist_ok=True)
 LOG_FILE = os.path.join(LOG_DIR, "server.log")
 
 # 配置日志
-logger = logging.getLogger("ml-fastvlm-server")
-logger.setLevel(logging.INFO)
-
-# 文件处理器（按大小轮转）
-file_handler = RotatingFileHandler(
-    LOG_FILE,
-    maxBytes=10*1024*1024,  # 10MB
-    backupCount=5,
-    encoding='utf-8'
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_FILE),
+        logging.StreamHandler()
+    ]
 )
-file_handler.setLevel(logging.INFO)
-
-# 控制台处理器
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-
-# 设置日志格式
-formatter = logging.Formatter(
-    '[%(asctime)s] %(levelname)s: %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-file_handler.setFormatter(formatter)
-console_handler.setFormatter(formatter)
-
-# 添加处理器
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
+logger = logging.getLogger(__name__)
 
 # FastVLM 模型路径
 MODEL_PATH = "/Users/user/workspace/models/llava-fastvithd_0.5b_stage3"
@@ -231,7 +217,94 @@ async def startup_event():
     """服务启动时加载模型"""
     load_model()
 
+class ImageDescriptionServer:
+    def __init__(self, model_path, host="0.0.0.0", port=5000):
+        self.model_path = model_path
+        self.host = host
+        self.port = port
+        logger.info(f"初始化服务器: host={host}, port={port}")
+        logger.info(f"模型路径: {model_path}")
+
+    async def handle_client(self, websocket, path):
+        client_id = id(websocket)
+        logger.info(f"新客户端连接: {client_id}")
+        try:
+            async for message in websocket:
+                try:
+                    # 解析消息
+                    data = json.loads(message)
+                    if 'image' not in data:
+                        logger.error(f"客户端 {client_id} 发送的消息缺少图片数据")
+                        continue
+
+                    # 解码图片
+                    image_data = base64.b64decode(data['image'])
+                    image = Image.open(io.BytesIO(image_data))
+                    
+                    # 保存临时图片
+                    temp_path = f"temp_{client_id}.jpg"
+                    image.save(temp_path)
+                    logger.info(f"保存临时图片: {temp_path}")
+
+                    # 准备推理参数
+                    args = argparse.Namespace(
+                        model_path=self.model_path,
+                        image_file=temp_path,
+                        prompt="Describe the image.",
+                        conv_mode="qwen_2",
+                        temperature=0.2,
+                        top_p=None,
+                        num_beams=1
+                    )
+
+                    # 执行推理
+                    logger.info(f"开始推理: client_id={client_id}")
+                    description = predict(args)
+                    logger.info(f"推理完成: {description}")
+
+                    # 发送结果
+                    response = {
+                        "type": "description",
+                        "content": description
+                    }
+                    await websocket.send(json.dumps(response))
+                    logger.info(f"已发送结果到客户端 {client_id}")
+
+                    # 清理临时文件
+                    os.remove(temp_path)
+                    logger.info(f"已删除临时文件: {temp_path}")
+
+                except json.JSONDecodeError:
+                    logger.error(f"客户端 {client_id} 发送的消息格式错误")
+                except Exception as e:
+                    logger.error(f"处理客户端 {client_id} 消息时出错: {str(e)}")
+                    await websocket.send(json.dumps({
+                        "type": "error",
+                        "content": str(e)
+                    }))
+
+        except websockets.exceptions.ConnectionClosed:
+            logger.info(f"客户端 {client_id} 断开连接")
+        except Exception as e:
+            logger.error(f"处理客户端 {client_id} 连接时出错: {str(e)}")
+
+    async def start(self):
+        server = await websockets.serve(
+            self.handle_client,
+            self.host,
+            self.port
+        )
+        logger.info(f"服务器启动成功: ws://{self.host}:{self.port}")
+        await server.wait_closed()
+
 if __name__ == "__main__":
-    logger.info("🚀 启动服务器...")
-    logger.info(f"📁 日志文件位置: {LOG_FILE}")
-    uvicorn.run(app, host="0.0.0.0", port=5000) 
+    # 设置参数
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model-path", type=str, default="./checkpoints/fastvlm_0.5b_stage3")
+    parser.add_argument("--host", type=str, default="0.0.0.0")
+    parser.add_argument("--port", type=int, default=5000)
+    args = parser.parse_args()
+
+    # 创建并启动服务器
+    server = ImageDescriptionServer(args.model_path, args.host, args.port)
+    asyncio.run(server.start()) 
