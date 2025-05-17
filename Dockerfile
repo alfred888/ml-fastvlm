@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.9.0-cudnn8-runtime-ubuntu24.04
+FROM nvidia/cuda:12.9.0-cudnn8-runtime-ubuntu22.04
 
 # 设置工作目录
 WORKDIR /app
