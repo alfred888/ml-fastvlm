@@ -231,60 +231,50 @@ class ImageDescriptionServer:
         try:
             async for message in websocket:
                 try:
-                    # 解析消息
-                    data = json.loads(message)
-                    if 'image' not in data:
-                        logger.error(f"客户端 {client_id} 发送的消息缺少图片数据")
+                    if isinstance(message, bytes):
+                        # 直接处理二进制图片数据
+                        image_data = message
+                        image = Image.open(io.BytesIO(image_data))
+                        
+                        # 保存临时图片
+                        temp_path = f"temp_{client_id}.jpg"
+                        image.save(temp_path)
+                        logger.info(f"保存临时图片: {temp_path}")
+
+                        # 准备推理参数
+                        args = argparse.Namespace(
+                            model_path=self.model_path,
+                            image_file=temp_path,
+                            prompt="用简短的语言描述图片内容"
+                        )
+
+                        # 执行推理
+                        result = predict(args)
+                        
+                        # 发送结果
+                        await websocket.send(json.dumps({
+                            "type": "description",
+                            "content": result,
+                            "timestamp": datetime.now().strftime("%Y%m%d_%H%M%S")
+                        }))
+
+                        # 清理临时文件
+                        try:
+                            os.remove(temp_path)
+                            logger.info(f"删除临时文件: {temp_path}")
+                        except Exception as e:
+                            logger.error(f"删除临时文件失败: {e}")
+
+                    else:
+                        logger.error(f"收到非二进制消息: {type(message)}")
                         continue
 
-                    # 解码图片
-                    image_data = base64.b64decode(data['image'])
-                    image = Image.open(io.BytesIO(image_data))
-                    
-                    # 保存临时图片
-                    temp_path = f"temp_{client_id}.jpg"
-                    image.save(temp_path)
-                    logger.info(f"保存临时图片: {temp_path}")
-
-                    # 准备推理参数
-                    args = argparse.Namespace(
-                        model_path=self.model_path,
-                        image_file=temp_path,
-                        prompt="Describe the image.",
-                        conv_mode="qwen_2",
-                        temperature=0.2,
-                        top_p=None,
-                        num_beams=1
-                    )
-
-                    # 执行推理
-                    logger.info(f"开始推理: client_id={client_id}")
-                    description = predict(args)
-                    logger.info(f"推理完成: {description}")
-
-                    # 发送结果
-                    response = {
-                        "type": "description",
-                        "content": description
-                    }
-                    await websocket.send(json.dumps(response))
-                    logger.info(f"已发送结果到客户端 {client_id}")
-
-                    # 清理临时文件
-                    os.remove(temp_path)
-                    logger.info(f"已删除临时文件: {temp_path}")
-
-                except json.JSONDecodeError:
-                    logger.error(f"客户端 {client_id} 发送的消息格式错误")
                 except Exception as e:
                     logger.error(f"处理客户端 {client_id} 消息时出错: {str(e)}")
-                    await websocket.send(json.dumps({
-                        "type": "error",
-                        "content": str(e)
-                    }))
+                    continue
 
         except websockets.exceptions.ConnectionClosed:
-            logger.info(f"客户端 {client_id} 断开连接")
+            logger.info(f"客户端 {client_id} 连接已关闭")
         except Exception as e:
             logger.error(f"处理客户端 {client_id} 连接时出错: {str(e)}")
 
@@ -295,16 +285,8 @@ class ImageDescriptionServer:
             self.port
         )
         logger.info(f"服务器启动成功: ws://{self.host}:{self.port}")
-        await server.wait_closed()
+        await server.wait_forever()
 
 if __name__ == "__main__":
-    # 设置参数
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model-path", type=str, default="./checkpoints/fastvlm_0.5b_stage3")
-    parser.add_argument("--host", type=str, default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=5000)
-    args = parser.parse_args()
-
-    # 创建并启动服务器
-    server = ImageDescriptionServer(args.model_path, args.host, args.port)
+    server = ImageDescriptionServer("./checkpoints/fastvlm_0.5b_stage3")
     asyncio.run(server.start()) 
